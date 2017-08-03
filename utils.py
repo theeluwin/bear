@@ -7,7 +7,22 @@ from collections import defaultdict
 from scipy.sparse import coo_matrix
 
 
+def serialize_slu(slu):
+    """Serializes scipy SLU object. Should be deprecated."""
+    return (slu.perm_c, slu.perm_r, slu.L, slu.U)
+
+
 def scc(nodes=[], edges=[]):
+    """
+    A function that computes strongly connected components using Kosaraju's algorithm. Returns list of components, which are list of nodes.
+
+    Args:
+        nodes (list): List of nodes of any type.
+        edges (list): List of edges, where each edge is a pair of nodes (ex: (0, 1)).
+
+    Returns:
+        List of strongly connected components. Each component is just a list of nodes.
+    """
     alists = defaultdict(lambda: [])
     rlists = defaultdict(lambda: [])
     avisited = defaultdict(lambda: False)
@@ -61,6 +76,19 @@ def scc(nodes=[], edges=[]):
 
 
 def read_matrix(filename, normalize=True, transpose=True, d=1, add_identity=False):
+    """
+    Reads coo matrix from csv file. Each line should denote an edge pair (like (0, 1)), and **must** be row-first ordered. `d` denote scalar multiplication, and `add_identity` adds an identity matrix after the scalar multiplication.
+
+    Args:
+        filename (str): Path to the csv file.
+        normalize (bool): If True, applies row-normalization.
+        transpose (bool): If True, transpose it **after** normalization.
+        d (float): Scalar multiplication.
+        add_identity (bool): Adds an identity matrix after all above things are done.
+
+    Returns:
+        A scipy coo_matrix. For example, for `d` = -0.85 and all the other options being True, it will produces a matrix of `(I - dM)` where `M` is a (stochastic) google matrix.
+    """
     row = []
     col = []
     data = []
@@ -115,12 +143,24 @@ def read_matrix(filename, normalize=True, transpose=True, d=1, add_identity=Fals
 
 
 def verbose_matrix(A):
+    """Stringfies matrix, considering only non-zero entries. Used for debugging."""
     n, m = A.shape
     A = A.toarray()
-    print('\n'.join([' '.join(['1' if A[i][j] else ' ' for j in range(m)]) for i in range(n)]))
+    return '\n'.join([' '.join(['1' if A[i][j] else ' ' for j in range(m)]) for i in range(n)])
 
 
 def matrix_partition(A, n, m=None):
+    """
+    Partitions a coo matrix `A` into four block matrix, with upper-left block having size of `n` by `m`.
+
+    Args:
+        A (coo_matrix): A matrix to be partitioned.
+        n (int): Row-size for the upper-left block.
+        m (int): Column-size for the upper-left block. If None, then m is set to n.
+
+    Returns:
+        A tuple of 4 coo matrices.
+    """
     A = A.tocoo()
     N, M = A.shape
     if m is None:
@@ -156,6 +196,16 @@ def matrix_partition(A, n, m=None):
 
 
 def drop_tolerance(A, t):
+    """
+    Drops entry of `A` having absolute value lower than `t`.
+
+    Args:
+        A (coo_matrix): Given coo matrix.
+        t (float): Tolerance threshld.
+
+    Returns:
+        A coo matrix.
+    """
     A = A.tocoo()
     row = []
     col = []
@@ -172,12 +222,22 @@ def drop_tolerance(A, t):
     return A
 
 
-def degree_reverse_rank_perm(A):
+def degree_reverse_rank_perm(A, reverse=False):
+    """
+    Computes permutation that sorts nodes by degree.
+
+    Args:
+        A (coo_matrix): Given coo matrix.
+        reverse (bool): If True, sorts with descending order.
+
+    Returns:
+        A permutation of node indices. Like `(i -> j)` is denoted as `perm[i] = j`.
+    """
     n, _ = A.shape
     degree = {i: 0 for i in range(n)}
     for i, j in zip(A.row, A.col):
         degree[j] += 1
-    bottoms = sorted(degree, key=degree.get)
+    bottoms = sorted(degree, key=degree.get, reverse=reverse)
     perm = [0 for _ in range(n)]
     for i in range(n):
         perm[bottoms[i]] = i
@@ -185,6 +245,18 @@ def degree_reverse_rank_perm(A):
 
 
 def reorder_matrix(A, perm, fix_row=False, fix_col=False):
+    """
+    Reorders given coo matrix with given permutation. You can fix either row or column.
+
+    Args:
+        A (coo_matrix): Given coo matrix.
+        perm (list): List of node indicies denoting permutation.
+        fix_row (bool): If True, reorders column only.
+        fix_col (bool): If True, reorders row only.
+
+    Returns:
+        A coo matrix.
+    """
     A = A.tocoo()
     if not fix_row:
         row = [perm[i] for i in A.row]
@@ -200,6 +272,17 @@ def reorder_matrix(A, perm, fix_row=False, fix_col=False):
 
 
 def reorder_vector(v, perm, reverse=False):
+    """
+    Reorders given vector with given permutation.
+
+    Args:
+        v (list or numpy array): Given vector.
+        perm (list): List of node indicies denoting permutation.
+        reverse (bool): If True, reorders with inverse permutation.
+
+    Returns:
+        numpy array of 1d.
+    """
     n = len(v)
     w = np.zeros(n)
     for i in range(n):
@@ -211,6 +294,17 @@ def reorder_vector(v, perm, reverse=False):
 
 
 def slashburn(A, k=None, greedy=True):
+    """
+    Computes SlashBurn of given coo matrix. Currently, only size-ordering works for CCs.
+
+    Args:
+        A (coo_matrix): Given coo matrix. It should be an valid adjacency matrix. It considers non-zero entries as edges, and ignores self-loops.
+        k (int): For hub selection. There is known rule of thumb, though. `k` = 1 produces (perfectly) optimal solution, but it will be slow.
+        greedy (bool): If True, it uses greedy algorithm for hub selection. Slightly slow but slightly more accurate.
+
+    Returns:
+        (perm, wing): Permutation of node indicies and size of wing (int).
+    """
     n, _ = A.shape
     if k is None:
         k = max(1, int(0.001 * n))

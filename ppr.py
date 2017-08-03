@@ -2,17 +2,13 @@
 
 import csv
 import pickle
-import networkx
 import numpy as np
 
+from collections import defaultdict
 from scipy.sparse import coo_matrix
 from scipy.sparse.linalg import splu, spilu
 
-from ops import *
-
-
-def serialize_slu(slu):
-    return (slu.perm_c, slu.perm_r, slu.L, slu.U)
+from utils import *
 
 
 class PPRBase(object):
@@ -35,14 +31,29 @@ class PPRBase(object):
 
 class PPRNetworkx(PPRBase):
 
-    def __init__(self, jump_prob=0.05, epsilon=1e-8):
+    def __init__(self, jump_prob=0.05, epsilon=1e-8, max_iteration=100):
+        """
+        Computes PPR using networkx library. `epsilon` denotes convergence threshold.
+
+        Args:
+            jump_prob (float): Jumping probability of PPR.
+            epsilon (float): Convergence threshold (uses l2-norm of difference).
+            max_iteration (int): Maximum number of allowed iterations.
+        """
+        try:
+            import networkx
+        except ModuleNotFoundError:
+            raise Exception("To use this class, install networkx via `pip install networkx`")
+        self.networkx = networkx
         self.alias = 'ntkx'
         self.d = 1 - jump_prob
         self.e = epsilon
+        self.max_iteration = max_iteration
 
     def preprocess(self, filename):
+        """Remember: row-first ordered csv file only!"""
         nodes = {}
-        graph = networkx.Graph()
+        graph = self.networkx.Graph()
         with open(filename) as file:
             reader = csv.reader(file)
             for line in reader:
@@ -60,21 +71,29 @@ class PPRNetworkx(PPRBase):
 
     def query(self, q):
         q = {i: q[i] for i in range(self.n)}
-        pagerank = networkx.pagerank(self.graph, alpha=self.d, personalization=q, tol=self.e, weight='weight')
+        pagerank = self.networkx.pagerank(self.graph, alpha=self.d, personalization=q, tol=self.e, weight='weight', max_iter=self.max_iteration)
         return np.array([pagerank[i] for i in range(self.n)])
 
     def save(self, filename):
         with open(filename, 'wb') as file:
-            pickle.dump((self.d, self.e, self.n, self.graph), file)
+            pickle.dump((self.d, self.e, self.max_iteration, self.n, self.graph), file)
 
     def load(self, filename):
         with open(filename, 'rb') as file:
-            self.d, self.e, self.n, self.graph = pickle.load(file)
+            self.d, self.e, self.max_iteration, self.n, self.graph = pickle.load(file)
 
 
 class PPRIterative(PPRBase):
 
     def __init__(self, jump_prob=0.05, epsilon=1e-4, max_iteration=100):
+        """
+        Computes PPR using iterative method. `epsilon` denotes convergence threshold.
+
+        Args:
+            jump_prob (float): Jumping probability of PPR.
+            epsilon (float): Convergence threshold (uses l2-norm of difference).
+            max_iteration (int): Maximum number of allowed iterations.
+        """
         self.alias = 'iter'
         self.c = jump_prob
         self.d = 1 - self.c
@@ -82,6 +101,7 @@ class PPRIterative(PPRBase):
         self.max_iteration = max_iteration
 
     def preprocess(self, filename):
+        """Remember: row-first ordered csv file only!"""
         self.A = read_matrix(filename, d=self.d)
         self.n, _ = self.A.shape
 
@@ -111,6 +131,13 @@ class PPRIterative(PPRBase):
 class PPRLUDecomposition(PPRBase):
 
     def __init__(self, jump_prob=0.05, tolerance=1e-8):
+        """
+        Computes PPR using LU decomposition. `tolerance` denotes approximation (set 0 for exact solution). Note that the approximation might return non-stochastic pagerank values.
+
+        Args:
+            jump_prob (float): Jumping probability of PPR.
+            tolerance (float): Drops entries with absolute value lower than this value when computing inverse of LU. I hear some rhyme.
+        """
         self.alias = 'ludc'
         self.c = jump_prob
         self.d = 1 - self.c
@@ -118,6 +145,7 @@ class PPRLUDecomposition(PPRBase):
         self.exact = False
 
     def preprocess(self, filename):
+        """Remember: row-first ordered csv file only!"""
         H = read_matrix(filename, d=-self.d, add_identity=True)
         n, _ = H.shape
         if self.t is None:
@@ -142,23 +170,36 @@ class PPRLUDecomposition(PPRBase):
             pickle.dump((self.c, self.perm, serialize_slu(self.LU)), file)
 
     def load(self, filename):
-        # with open(filename, 'rb') as file:
-            # self.c, self.perm, slu = pickle.load(file)
-            # todo: recover SuperLU from slu
+        # todo: recover SuperLU from serialized slu
+        """
+        with open(filename, 'rb') as file:
+            self.c, self.perm, slu = pickle.load(file)
+        """
         raise NotImplementedError
 
 
 class PPRBear(PPRBase):
 
-    def __init__(self, jump_prob=0.05, tolerance=1e-8, k=None):
+    def __init__(self, jump_prob=0.05, tolerance=1e-8, k=None, greedy=True):
+        """
+        Computes PPR using BEAR with SlashBurn. `tolerance` denotes approximation (set 0 for exact solution). Note that the approximation might return non-stochastic pagerank values. `k` and `greedy` are options for SlashBurn.
+
+        Args:
+            jump_prob (float): Jumping probability of PPR.
+            tolerance (float): Drops entries with absolute value lower than this value when computing inverse of LUs (H11, S from the paper).
+            k (int): SlashBurn finds top-k hubs. There is a rule of thumb, so if you're not familiar with SlashBurn, then leave it to None.
+            greedy (bool): Hub selection on SlashBurn. See SlashBurn for more details.
+        """
         self.alias = 'bear'
         self.c = jump_prob
         self.d = 1 - self.c
         self.t = tolerance
         self.k = k
+        self.greedy = greedy
         self.exact = False
 
     def preprocess(self, filename):
+        """Remember: row-first ordered csv file only!"""
         H = read_matrix(filename, d=-self.d, add_identity=True)
         self.n, _ = H.shape
         if self.t is None:
@@ -167,7 +208,7 @@ class PPRBear(PPRBase):
             self.exact = True
         if self.k is None:
             self.k = max(1, int(0.001 * self.n))
-        self.perm_H, wing = slashburn(H, self.k)
+        self.perm_H, wing = slashburn(H, self.k, self.greedy)
         self.body = self.n - wing
         H = reorder_matrix(H, self.perm_H)
         H11, H12, H21, H22 = matrix_partition(H, self.body)
@@ -190,14 +231,16 @@ class PPRBear(PPRBase):
             self.LU2 = splu(S)
         else:
             self.LU2 = spilu(S, drop_tol=self.t)
-        # if not self.exact:
-        if False:  # this approximation drops accuracy too much! why?
+        # issue: this approximation drops accuracy way too much! why?
+        """
+        if not self.exact:
             H12 = drop_tolerance(self.H12, self.t)
             del self.H12
             self.H12 = H12
             H21 = drop_tolerance(self.H21, self.t)
             del self.H21
             self.H21 = H21
+        """
         del S
 
     def query(self, q):
@@ -216,7 +259,9 @@ class PPRBear(PPRBase):
             pickle.dump((self.c, self.body, self.perm_H, self.perm_S, self.H12, self.H21, serialize_slu(self.LU1), serialize_slu(self.LU2)), file)
 
     def load(self, filename):
-        # with open(filename, 'rb') as file:
-            # self.c, self.body, self.perm_H, self.perm_S, self.H12, self.H21, slu1, slu2 = pickle.load(file)
-            # todo: recover SuperLU from slu
+        # todo: recover SuperLU from serialized slu
+        """
+        with open(filename, 'rb') as file:
+            self.c, self.body, self.perm_H, self.perm_S, self.H12, self.H21, slu1, slu2 = pickle.load(file)
+        """
         raise NotImplementedError

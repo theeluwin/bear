@@ -4,8 +4,8 @@ import csv
 import time
 import numpy as np
 
-from ops import *
 from ppr import *
+from utils import *
 from scipy.stats import spearmanr
 
 
@@ -72,9 +72,9 @@ def sanity(filename, n, seed=None, exact=True):
 
 
 if __name__ == '__main__':
-    # filename, n, exact = 'data/email.csv', 36692, True
+    filename, n, exact = 'data/email.csv', 36692, True
     # filename, n, exact = 'data/email.csv', 36692, False
     # filename, n, exact = 'data/small.csv', 15, True
-    filename, n, exact = 'data/small.csv', 15, False
+    # filename, n, exact = 'data/small.csv', 15, False
     sanity(filename, n, exact=exact, seed=999)
     profile(filename, n, exact=exact, seed=999)
