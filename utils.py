@@ -87,24 +87,30 @@ def read_matrix(filename, normalize=True, transpose=True, d=1, add_identity=Fals
         add_identity (bool): Adds an identity matrix after all above things are done.
 
     Returns:
-        A scipy coo_matrix. For example, for `d` = -0.85 and all the other options being True, it will produces a matrix of `(I - dM)` where `M` is a (stochastic) google matrix.
+        (dict of node2index, coo_matrix): For example, for `d` = -0.85 and all the other options being True, it will produces a matrix of `(I - dM)` where `M` is a (stochastic) google matrix. When reading, we assign index to each node and stores it to `node2index`.
     """
     row = []
     col = []
     data = []
     max_i = 0
     max_j = 0
+    node2index = {}
+    n = 0
     with open(filename) as file:
         reader = csv.reader(file)
         current_i = -1
         current_norm = 0
         for line in reader:
-            i = int(line[0])
-            j = int(line[1])
-            if i > max_i:
-                max_i = i
-            if j > max_j:
-                max_j = j
+            x = line[0]
+            y = line[1]
+            if x not in node2index:
+                node2index[x] = n
+                n += 1
+            i = node2index[x]
+            if y not in node2index:
+                node2index[y] = n
+                n += 1
+            j = node2index[y]
             if current_i != i:
                 if current_norm:
                     if normalize:
@@ -133,13 +139,12 @@ def read_matrix(filename, normalize=True, transpose=True, d=1, add_identity=Fals
         row.extend(current_row)
         col.extend(current_col)
         data.extend([value for _ in range(current_norm)])
-    n = (max_i if max_i > max_j else max_j) + 1
     if add_identity:
         mono = list(range(n))
         row.extend(mono)
         col.extend(mono)
         data.extend([1 for _ in range(n)])
-    return coo_matrix((data, (row, col)), shape=(n, n), dtype=np.float64)
+    return node2index, coo_matrix((data, (row, col)), shape=(n, n), dtype=np.float64)
 
 
 def verbose_matrix(A):

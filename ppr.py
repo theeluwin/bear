@@ -4,7 +4,6 @@ import csv
 import pickle
 import numpy as np
 
-from collections import defaultdict
 from scipy.sparse import coo_matrix
 from scipy.sparse.linalg import splu, spilu
 
@@ -52,27 +51,32 @@ class PPRNetworkx(PPRBase):
 
     def preprocess(self, filename):
         """Remember: row-first ordered csv file only!"""
-        nodes = {}
+        self.n = 0
+        self.node2index = {}
         graph = self.networkx.Graph()
         with open(filename) as file:
             reader = csv.reader(file)
             for line in reader:
-                i = int(line[0])
-                j = int(line[1])
-                if i not in nodes:
-                    graph.add_node(i)
-                    nodes[i] = True
-                if j not in nodes:
-                    graph.add_node(j)
-                    nodes[j] = True
-                graph.add_edge(i, j, weight=1)
-        self.n = len(list(nodes.keys()))
+                x = line[0]
+                y = line[1]
+                if x not in self.node2index:
+                    graph.add_node(x)
+                    self.node2index[x] = self.n
+                    self.n += 1
+                if y not in self.node2index:
+                    graph.add_node(y)
+                    self.node2index[y] = self.n
+                    self.n += 1
+                graph.add_edge(x, y, weight=1)
+        self.index2node = [None for _ in range(self.n)]
+        for node in self.node2index:
+            self.index2node[self.node2index[node]] = node
         self.graph = graph
 
     def query(self, q):
-        q = {i: q[i] for i in range(self.n)}
+        q = {self.index2node[i]: q[i] for i in range(self.n)}
         pagerank = self.networkx.pagerank(self.graph, alpha=self.d, personalization=q, tol=self.e, weight='weight', max_iter=self.max_iteration)
-        return np.array([pagerank[i] for i in range(self.n)])
+        return np.array([pagerank[self.index2node[i]] for i in range(self.n)])
 
     def save(self, filename):
         with open(filename, 'wb') as file:
@@ -102,7 +106,7 @@ class PPRIterative(PPRBase):
 
     def preprocess(self, filename):
         """Remember: row-first ordered csv file only!"""
-        self.A = read_matrix(filename, d=self.d)
+        self.node2index, self.A = read_matrix(filename, d=self.d)
         self.n, _ = self.A.shape
 
     def query(self, q):
@@ -146,7 +150,7 @@ class PPRLUDecomposition(PPRBase):
 
     def preprocess(self, filename):
         """Remember: row-first ordered csv file only!"""
-        H = read_matrix(filename, d=-self.d, add_identity=True)
+        self.node2index, H = read_matrix(filename, d=-self.d, add_identity=True)
         n, _ = H.shape
         if self.t is None:
             self.t = np.power(n, -0.5)
@@ -200,7 +204,7 @@ class PPRBear(PPRBase):
 
     def preprocess(self, filename):
         """Remember: row-first ordered csv file only!"""
-        H = read_matrix(filename, d=-self.d, add_identity=True)
+        self.node2index, H = read_matrix(filename, d=-self.d, add_identity=True)
         self.n, _ = H.shape
         if self.t is None:
             self.t = np.power(self.n, -0.5)
