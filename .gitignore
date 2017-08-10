@@ -104,3 +104,6 @@ ENV/
 models/
 anaconda3/
 data/patent.csv
+data/stan.csv
+*.dat
+temp.txt

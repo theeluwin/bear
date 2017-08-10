@@ -105,6 +105,7 @@ They're located in `ppr_tf.py`:
 Due to the initialization of tensorflow variables, preprocessing steps are merged into `__init__`.
 See `benchmark_tf.py` for more detailed usage.
 Currently, since tensorflow does not support various sparse matrix manipulations like LU decomposition solver, only sparse-dense multiplication is used.
+Note that my GPU is GeForce GTX 1080.
 
 [1]: http://dl.acm.org/citation.cfm?id=2723716
 [2]: http://ieeexplore.ieee.org/abstract/document/6807798/

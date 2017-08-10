@@ -75,12 +75,12 @@ def scc(nodes=[], edges=[]):
     return [components[leader] for leader in components]
 
 
-def read_matrix(filename, normalize=True, transpose=True, d=1, add_identity=False):
+def read_matrix(filepath, normalize=True, transpose=True, d=1, add_identity=False):
     """
     Reads coo matrix from csv file. Each line should denote an edge pair (like (0, 1)), and **must** be row-first ordered. `d` denote scalar multiplication, and `add_identity` adds an identity matrix after the scalar multiplication.
 
     Args:
-        filename (str): Path to the csv file.
+        filepath (str): Path to the csv file.
         normalize (bool): If True, applies row-normalization.
         transpose (bool): If True, transpose it **after** normalization.
         d (float): Scalar multiplication.
@@ -96,7 +96,7 @@ def read_matrix(filename, normalize=True, transpose=True, d=1, add_identity=Fals
     max_j = 0
     node2index = {}
     n = 0
-    with open(filename) as file:
+    with open(filepath) as file:
         reader = csv.reader(file)
         current_i = -1
         current_norm = 0
