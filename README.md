@@ -103,9 +103,12 @@ They're located in `ppr_tf.py`:
 * `PPRBearTF`
 
 Due to the initialization of tensorflow variables, preprocessing steps are merged into `__init__`.
-See `benchmark_tf.py` for more detailed usage.
+See `benchmark.py` for more detailed usage.
 Currently, since tensorflow does not support various sparse matrix manipulations like LU decomposition solver, only sparse-dense multiplication is used.
 Note that my GPU is GeForce GTX 1080.
+Results of some experiments are located in `profile.txt`.
+You can download some large datasets in [here][3].
 
 [1]: http://dl.acm.org/citation.cfm?id=2723716
 [2]: http://ieeexplore.ieee.org/abstract/document/6807798/
+[3]: https://datalab.snu.ac.kr/bear/
